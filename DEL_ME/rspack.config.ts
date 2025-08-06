@@ -1,28 +1,18 @@
-import { withZephyr } from "zephyr-rspack-plugin";
+import { defineConfig } from "@rspack/cli";
 import { rspack } from "@rspack/core";
 
 // Target browsers, see: https://github.com/browserslist/browserslist
 const targets = ["last 2 versions", "> 0.2%",  "not dead",  "Firefox ESR"];
 
-export default withZephyr()({
+export default defineConfig({
 	entry: {
-		main: "./src/index.js"
+		main: "./src/index.ts"
 	},
 	resolve: {
-		extensions: ["...", ".ts"],
-		fallback: {
-			"fs": false,
-			"crypto": false,
-			"path": false,
-			"util": false
-		}
+		extensions: ["...", ".ts"]
 	},
 	module: {
 		rules: [
-			{
-				test: /\.wasm$/,
-				type: "asset/resource"
-			},
 			{
 				test: /\.svg$/,
 				type: "asset"
