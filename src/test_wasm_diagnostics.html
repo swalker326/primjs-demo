@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PrimJS WASM Diagnostics</title>
+    <style>
+        body {
+            font-family: monospace;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        h1, h2 {
+            color: #4CAF50;
+        }
+        .section {
+            background: #2d2d2d;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .success {
+            color: #4CAF50;
+        }
+        .error {
+            color: #f44336;
+        }
+        .info {
+            color: #2196F3;
+        }
+        pre {
+            background: #1e1e1e;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #555;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background: #333;
+        }
+    </style>
+</head>
+<body>
+    <h1>PrimJS WebAssembly Diagnostics</h1>
+    
+    <div class="section">
+        <h2>1. Module Loading Status</h2>
+        <div id="loadStatus"></div>
+    </div>
+    
+    <div class="section">
+        <h2>2. WASM Module Information</h2>
+        <div id="moduleInfo"></div>
+    </div>
+    
+    <div class="section">
+        <h2>3. Exported Functions</h2>
+        <div id="exportedFunctions"></div>
+    </div>
+    
+    <div class="section">
+        <h2>4. Memory Information</h2>
+        <div id="memoryInfo"></div>
+    </div>
+    
+    <div class="section">
+        <h2>5. JavaScript Engine Features</h2>
+        <div id="engineFeatures"></div>
+    </div>
+    
+    <div class="section">
+        <h2>6. Performance Tests</h2>
+        <div id="performanceTests"></div>
+    </div>
+
+    <script>
+        let PrimJSModule = null;
+        
+        function log(elementId, message, className = '') {
+            const element = document.getElementById(elementId);
+            const div = document.createElement('div');
+            div.className = className;
+            div.textContent = message;
+            element.appendChild(div);
+        }
+        
+        async function loadPrimJS() {
+            try {
+                log('loadStatus', 'Loading PrimJS module...', 'info');
+                
+                const startTime = performance.now();
+                
+                // Load the script
+                await new Promise((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = '/primjs.js';
+                    script.onload = resolve;
+                    script.onerror = reject;
+                    document.head.appendChild(script);
+                });
+                
+                // Wait for PrimJS to be available
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                if (typeof PrimJS === 'undefined') {
+                    throw new Error('PrimJS not found after loading script');
+                }
+                
+                log('loadStatus', '✓ PrimJS script loaded', 'success');
+                
+                // Initialize the module
+                PrimJSModule = await PrimJS({
+                    locateFile: (path) => {
+                        if (path.endsWith('.wasm')) {
+                            log('loadStatus', `Locating WASM file: ${path}`, 'info');
+                            return '/' + path;
+                        }
+                        return path;
+                    },
+                    onRuntimeInitialized: () => {
+                        log('loadStatus', '✓ Runtime initialized', 'success');
+                    }
+                });
+                
+                const loadTime = (performance.now() - startTime).toFixed(2);
+                log('loadStatus', `✓ Module loaded in ${loadTime}ms`, 'success');
+                
+                // Initialize runtime
+                const initResult = PrimJSModule._primjs_init(64 * 1024 * 1024);
+                if (initResult === 0) {
+                    log('loadStatus', '✓ PrimJS runtime initialized with 64MB memory', 'success');
+                } else {
+                    log('loadStatus', '✗ Failed to initialize runtime', 'error');
+                }
+                
+                return true;
+            } catch (error) {
+                log('loadStatus', `✗ Error: ${error.message}`, 'error');
+                return false;
+            }
+        }
+        
+        function analyzeModule() {
+            if (!PrimJSModule) {
+                log('moduleInfo', '✗ Module not loaded', 'error');
+                return;
+            }
+            
+            // Check WASM memory
+            if (PrimJSModule.HEAPU8) {
+                const heapSize = PrimJSModule.HEAPU8.length;
+                log('moduleInfo', `Heap size: ${(heapSize / 1024 / 1024).toFixed(2)} MB`);
+            }
+            
+            // Check for various module properties
+            const properties = [
+                'HEAP8', 'HEAP16', 'HEAP32', 'HEAPU8', 'HEAPU16', 'HEAPU32',
+                'HEAPF32', 'HEAPF64', 'wasmMemory', '_malloc', '_free'
+            ];
+            
+            let table = '<table><tr><th>Property</th><th>Available</th><th>Type</th></tr>';
+            for (const prop of properties) {
+                const available = prop in PrimJSModule;
+                const type = available ? typeof PrimJSModule[prop] : 'N/A';
+                table += `<tr>
+                    <td>${prop}</td>
+                    <td class="${available ? 'success' : 'error'}">${available ? '✓' : '✗'}</td>
+                    <td>${type}</td>
+                </tr>`;
+            }
+            table += '</table>';
+            document.getElementById('moduleInfo').innerHTML = table;
+        }
+        
+        function listExportedFunctions() {
+            if (!PrimJSModule) {
+                log('exportedFunctions', '✗ Module not loaded', 'error');
+                return;
+            }
+            
+            // Find all functions starting with underscore
+            const functions = Object.keys(PrimJSModule)
+                .filter(key => key.startsWith('_') && typeof PrimJSModule[key] === 'function')
+                .sort();
+            
+            log('exportedFunctions', `Found ${functions.length} exported functions:`);
+            
+            let table = '<table><tr><th>Function</th><th>Related to</th></tr>';
+            for (const func of functions) {
+                let category = 'Other';
+                if (func.includes('primjs')) category = 'PrimJS Wrapper';
+                else if (func.includes('LEPUS')) category = 'LEPUS/QuickJS';
+                else if (func.includes('malloc') || func.includes('free')) category = 'Memory';
+                else if (func.includes('emscripten')) category = 'Emscripten Runtime';
+                
+                table += `<tr><td><code>${func}</code></td><td>${category}</td></tr>`;
+            }
+            table += '</table>';
+            document.getElementById('exportedFunctions').innerHTML += table;
+        }
+        
+        function checkMemory() {
+            if (!PrimJSModule) {
+                log('memoryInfo', '✗ Module not loaded', 'error');
+                return;
+            }
+            
+            const info = [];
+            
+            // Check WebAssembly memory
+            if (PrimJSModule.wasmMemory) {
+                const pages = PrimJSModule.wasmMemory.buffer.byteLength / 65536;
+                info.push(`WebAssembly Memory Pages: ${pages}`);
+                info.push(`WebAssembly Memory Size: ${(PrimJSModule.wasmMemory.buffer.byteLength / 1024 / 1024).toFixed(2)} MB`);
+            }
+            
+            // Check heap utilization
+            if (PrimJSModule.HEAP8) {
+                info.push(`HEAP8 length: ${PrimJSModule.HEAP8.length} bytes`);
+            }
+            
+            // Try to get memory usage from PrimJS
+            try {
+                const memUsed = PrimJSModule._primjs_get_memory_used();
+                info.push(`PrimJS reported memory: ${memUsed} bytes`);
+            } catch (e) {
+                info.push(`Cannot get PrimJS memory usage: ${e.message}`);
+            }
+            
+            info.forEach(item => {
+                const div = document.createElement('div');
+                div.textContent = item;
+                document.getElementById('memoryInfo').appendChild(div);
+            });
+        }
+        
+        function testEngineFeatures() {
+            if (!PrimJSModule) {
+                log('engineFeatures', '✗ Module not loaded', 'error');
+                return;
+            }
+            
+            const tests = [
+                { name: 'Basic Math', code: '1 + 1' },
+                { name: 'String Concatenation', code: '"Hello " + "World"' },
+                { name: 'Array Creation', code: '[1, 2, 3]' },
+                { name: 'Object Creation', code: '({a: 1, b: 2})' },
+                { name: 'JSON.stringify', code: 'JSON.stringify({test: "value"})' },
+                { name: 'JSON.parse', code: 'JSON.parse("{\\"key\\":\\"value\\"}")' },
+                { name: 'Math Functions', code: 'Math.sqrt(16)' },
+                { name: 'Array Methods', code: '[1,2,3].map(x => x * 2)' },
+                { name: 'Template Literals', code: '`Hello ${"World"}`' },
+                { name: 'Arrow Functions', code: '((x, y) => x + y)(5, 3)' },
+                { name: 'Destructuring', code: 'const [a, b] = [1, 2]; a + b' },
+                { name: 'Spread Operator', code: '[...[1, 2], ...[3, 4]]' },
+                { name: 'Classes', code: 'class Test { constructor() { this.x = 1; } } new Test().x' },
+                { name: 'Promises', code: 'Promise.resolve(42)' },
+                { name: 'Async/Await', code: '(async () => await Promise.resolve("async"))()' },
+                { name: 'Symbol', code: 'typeof Symbol("test")' },
+                { name: 'Map', code: 'new Map([[1, "one"]]).size' },
+                { name: 'Set', code: 'new Set([1, 2, 3]).size' },
+                { name: 'WeakMap', code: 'typeof new WeakMap()' },
+                { name: 'WeakSet', code: 'typeof new WeakSet()' }
+            ];
+            
+            let table = '<table><tr><th>Feature</th><th>Code</th><th>Result</th><th>Status</th></tr>';
+            
+            for (const test of tests) {
+                try {
+                    const resultPtr = PrimJSModule.ccall('primjs_eval', 
+                        'number', ['string'], [test.code]);
+                    const result = PrimJSModule.UTF8ToString(resultPtr);
+                    PrimJSModule._primjs_free_string(resultPtr);
+                    
+                    const success = !result.startsWith('Error:');
+                    table += `<tr>
+                        <td>${test.name}</td>
+                        <td><code>${test.code}</code></td>
+                        <td>${result}</td>
+                        <td class="${success ? 'success' : 'error'}">${success ? '✓' : '✗'}</td>
+                    </tr>`;
+                } catch (e) {
+                    table += `<tr>
+                        <td>${test.name}</td>
+                        <td><code>${test.code}</code></td>
+                        <td>Exception: ${e.message}</td>
+                        <td class="error">✗</td>
+                    </tr>`;
+                }
+            }
+            
+            table += '</table>';
+            document.getElementById('engineFeatures').innerHTML = table;
+        }
+        
+        function runPerformanceTests() {
+            if (!PrimJSModule) {
+                log('performanceTests', '✗ Module not loaded', 'error');
+                return;
+            }
+            
+            const tests = [
+                {
+                    name: 'Simple Addition (1000x)',
+                    code: 'let sum = 0; for(let i = 0; i < 1000; i++) sum += i; sum'
+                },
+                {
+                    name: 'Array Creation and Mapping',
+                    code: 'Array.from({length: 1000}, (_, i) => i).map(x => x * 2).reduce((a, b) => a + b, 0)'
+                },
+                {
+                    name: 'Object Operations',
+                    code: 'const obj = {}; for(let i = 0; i < 100; i++) obj["key" + i] = i; Object.keys(obj).length'
+                },
+                {
+                    name: 'String Concatenation',
+                    code: 'let str = ""; for(let i = 0; i < 100; i++) str += "test"; str.length'
+                },
+                {
+                    name: 'Fibonacci(20)',
+                    code: 'function fib(n) { return n <= 1 ? n : fib(n-1) + fib(n-2); } fib(20)'
+                }
+            ];
+            
+            let table = '<table><tr><th>Test</th><th>Result</th><th>Time (ms)</th></tr>';
+            
+            for (const test of tests) {
+                try {
+                    const startTime = performance.now();
+                    
+                    const resultPtr = PrimJSModule.ccall('primjs_eval', 
+                        'number', ['string'], [test.code]);
+                    const result = PrimJSModule.UTF8ToString(resultPtr);
+                    PrimJSModule._primjs_free_string(resultPtr);
+                    
+                    const elapsed = (performance.now() - startTime).toFixed(2);
+                    
+                    table += `<tr>
+                        <td>${test.name}</td>
+                        <td>${result}</td>
+                        <td>${elapsed}</td>
+                    </tr>`;
+                } catch (e) {
+                    table += `<tr>
+                        <td>${test.name}</td>
+                        <td colspan="2" class="error">Error: ${e.message}</td>
+                    </tr>`;
+                }
+            }
+            
+            table += '</table>';
+            document.getElementById('performanceTests').innerHTML = table;
+            
+            // Run garbage collection
+            PrimJSModule._primjs_gc();
+            log('performanceTests', 'Garbage collection executed');
+        }
+        
+        async function runDiagnostics() {
+            const success = await loadPrimJS();
+            
+            if (success) {
+                analyzeModule();
+                listExportedFunctions();
+                checkMemory();
+                testEngineFeatures();
+                runPerformanceTests();
+            }
+        }
+        
+        // Run diagnostics when page loads
+        window.addEventListener('load', runDiagnostics);
+    </script>
+</body>
+</html>
