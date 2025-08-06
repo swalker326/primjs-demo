@@ -45,7 +45,7 @@ pnpm run preview
 
 ## Live Demo
 
-The application is deployed to Zephyr Cloud and available at: https://shane-swalker-dev-12083-rspack-vanilla-ts-starter-476520fc8-ze.zephyrcloud.app
+The application is deployed to Zephyr Cloud and available at: https://t-demo-rspack-vanilla-ts-starter-primjs-demo-swalker326-ze.averygood.dev/
 
 ## Project Structure
 

@@ -404,6 +404,11 @@ function runCode() {
   }
 }
 
+// Make functions globally accessible
+window.runCode = runCode;
+window.clearOutput = clearOutput;
+window.loadExample = loadExample;
+
 // Initialize when page loads
 window.addEventListener("load", initPrimJS);
 
